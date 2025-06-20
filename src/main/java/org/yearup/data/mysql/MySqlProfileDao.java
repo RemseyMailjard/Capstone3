@@ -5,7 +5,9 @@ import org.yearup.models.Profile;
 import org.yearup.data.ProfileDao;
 
 import javax.sql.DataSource;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 
 @Component
 public class MySqlProfileDao extends MySqlDaoBase implements ProfileDao
@@ -23,7 +25,9 @@ public class MySqlProfileDao extends MySqlDaoBase implements ProfileDao
 
         try(Connection connection = getConnection())
         {
-            PreparedStatement ps = connection.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS);
+            // CORRECTIE: De 'user_id' is de PK, maar wordt niet gegenereerd (het is een FK).
+            // PreparedStatement.RETURN_GENERATED_KEYS is hier dus niet nodig.
+            PreparedStatement ps = connection.prepareStatement(sql);
             ps.setInt(1, profile.getUserId());
             ps.setString(2, profile.getFirstName());
             ps.setString(3, profile.getLastName());
@@ -43,5 +47,4 @@ public class MySqlProfileDao extends MySqlDaoBase implements ProfileDao
             throw new RuntimeException(e);
         }
     }
-
 }
