@@ -17,7 +17,7 @@ public abstract class MySqlDaoBase
 {
     private DataSource dataSource;
 
-    // Use @Autowired on the constructor to get the auto-geconfigureerde DataSource te ontvangen
+    // Use @Autowired on the constructor to get the auto-configured DataSource te ontvangen
     @Autowired
     public MySqlDaoBase(DataSource dataSource)
     {
