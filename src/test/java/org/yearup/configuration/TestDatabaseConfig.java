@@ -2,86 +2,53 @@ package org.yearup.configuration;
 
 import org.apache.ibatis.jdbc.ScriptRunner;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import javax.sql.DataSource;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.Statement;
 
 @Configuration
-public class TestDatabaseConfig
-{
-    private final String serverUrl;
-    private final String testDb;
-    private final String username;
-    private final String password;
+public class TestDatabaseConfig {
 
+    private final DataSource mainDataSource;
+
+    // Injecteer de DataSource die Spring Boot automatisch configureert
+    // op basis van je application.properties.
     @Autowired
-    public TestDatabaseConfig(@Value("${datasource.url}") String serverUrl,
-                              @Value("${datasource.username}") String username,
-                              @Value("${datasource.password}") String password,
-                              @Value("${datasource.testdb}") String testDb)
-    {
-        this.serverUrl = serverUrl;
-        this.testDb = testDb;
-        this.username = username;
-        this.password = password;
+    public TestDatabaseConfig(DataSource dataSource) {
+        this.mainDataSource = dataSource;
     }
-
-    @PostConstruct
-    public void setup() {
-
-        try(Connection connection = DriverManager.getConnection(serverUrl + "/sys", username, password);
-            Statement statement = connection.createStatement();
-        )
-        {
-            statement.execute("DROP DATABASE IF EXISTS " + testDb + ";");
-            statement.execute("CREATE DATABASE " + testDb + ";");
-        }
-        catch (SQLException ignored) {}
-    }
-
-    @PreDestroy
-    public void cleanup() {
-
-        try(Connection connection = DriverManager.getConnection(serverUrl + "/sys", username, password);
-            Statement statement = connection.createStatement();
-        )
-        {
-            statement.execute("DROP DATABASE IF EXISTS " + testDb + ";");
-        }
-        catch (SQLException ignored){}
-
-    }
-
 
     @Bean
-    public DataSource dataSource() throws SQLException, IOException
-    {
-        SingleConnectionDataSource dataSource = new SingleConnectionDataSource();
-        dataSource.setUrl(String.format("%s/%s", serverUrl, testDb));
-        dataSource.setUsername(username);
-        dataSource.setPassword(password);
-        dataSource.setAutoCommit(false);
-        dataSource.setSuppressClose(true);
+    public DataSource dataSource() throws IOException, SQLException {
+        // We gebruiken de auto-geconfigureerde DataSource om het script uit te voeren.
+        // Dit zorgt ervoor dat we de juiste database opschonen.
+        try (var connection = mainDataSource.getConnection()) {
+            ScriptRunner runner = new ScriptRunner(connection);
+            
+            // Zorg ervoor dat test-data.sql is omgezet naar T-SQL!
+            Reader reader = new BufferedReader(new FileReader(new ClassPathResource("test-data.sql").getFile()));
+            
+            runner.setLogWriter(null); // Optioneel: voorkom dat script output naar de console gaat
+            runner.runScript(reader);
+        }
 
-        ScriptRunner runner = new ScriptRunner(dataSource.getConnection());
-        Reader reader = new BufferedReader(new FileReader((new ClassPathResource("test-data.sql")).getFile().getAbsolutePath()));
-        runner.runScript(reader);
-        dataSource.getConnection().commit();
+        // Maak een specifieke DataSource voor tests die niet automatisch sluit en geen autocommit heeft.
+        // Dit is nuttig om transacties na elke test terug te kunnen draaien.
+        var testDataSource = new SingleConnectionDataSource();
+        testDataSource.setUrl(((org.apache.commons.dbcp2.BasicDataSource) mainDataSource).getUrl());
+        testDataSource.setUsername(((org.apache.commons.dbcp2.BasicDataSource) mainDataSource).getUsername());
+        testDataSource.setPassword(((org.apache.commons.dbcp2.BasicDataSource) mainDataSource).getPassword());
+        testDataSource.setAutoCommit(false);
+        testDataSource.setSuppressClose(true);
 
-        return dataSource;
+        return testDataSource;
     }
 }
